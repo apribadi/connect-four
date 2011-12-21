@@ -147,8 +147,10 @@ play f g s = let (b, pl) = s in
       Nothing -> putStrLn "Invalid command\n" >> play f g s
       Just b' -> play f g (b', other pl)
 
-human (b, _) = getinput "Enter a column: " validate
-  where validate c = validcol b c
+human (b, _) = getinput prompt validate
+  where Board _ cn _ _ = b
+        validate c = validcol b c
+        prompt = "Next move? [0-" ++ show (cn-1) ++ "]: "
 
 ai (b, pl) = return c
   where (_, (c:_)) = minimax b 4 pl
