@@ -7,15 +7,20 @@ import Data.List
 import Data.Maybe
 
 data Player  = Empty | One | Two deriving (Eq, Ord)
-data Board = Board Int Int (Array Int Player) [[(Int, Int)]]
 
 instance Show Player where
   show Empty = " "
   show One = "X"
   show Two = "O"
 
-nextplayer One = Two
-nextplayer Two = One
+other One = Two
+other Two = One
+
+data Board = Board Int Int (Array Int Player) [[(Int, Int)]]
+
+-- Constructor
+blank rn cn = Board rn cn xs (regions rn cn)
+  where xs = listArray (0, rn*cn-1) (replicate (rn*cn) Empty)
 
 instance Show Board where
   show b = unlines (map srow (reverse [0..rn-1])) ++ nums
@@ -24,17 +29,19 @@ instance Show Board where
           srow r = "|" ++ (intercalate "|" $ map show $ row r) ++ "|"
           nums = " " ++ (intercalate " " $ map show [0..cn-1]) ++ " "
       
-bbounds b = (rn, cn) where Board rn cn _ _ = b
-blank rn cn = Board rn cn xs (regions rn cn)
-  where xs = listArray (0, rn*cn-1) (replicate (rn*cn) Empty)
+-- slot access
 slot b r c = xs ! ((r * cn) + c)                           
   where Board rn cn xs regs = b
 slotput b r c v = Board rn cn (xs // [((r*cn)+c, v)]) regs 
   where Board rn cn xs regs = b
+
+-- validation
+bbounds b = (rn, cn) where Board rn cn _ _ = b
 validcol b c = (0 <= c) && (c < cn) where (_, cn) = bbounds b
 available b = filter (\c -> Empty == slot b (rn-1) c) [0..cn-1]
   where (rn, cn) = bbounds b
 
+-- place a piece in a column
 safeput :: Board -> Int -> Player -> Maybe Board
 safeput b c v
   | validcol b c && isJust mr = Just $ slotput b (fromJust mr) c v
@@ -42,6 +49,7 @@ safeput b c v
   where (rn, _) = bbounds b
         mr = find (\r -> Empty == slot b r c) [0..rn-1]
 
+-- groups of four
 regions :: Int -> Int -> [[(Int, Int)]]
 regions rn cn = let
     horiz r c = [(r, c + i) | i <- [0..3]]
@@ -56,33 +64,30 @@ regions rn cn = let
       , [diag2 r c | r <- [3..rn-1], c <- [0..cn-4]]
       ]
 
+
 -- minimax AI
+--   TODO: add pruning
 
 winner b 
-  | winregs One = Just One
-  | winregs Two = Just Two
+  | haswin One = Just One
+  | haswin Two = Just Two
   | otherwise   = Nothing
   where Board rn cn xs regs = b
-        winreg pl reg = all (\(r, c) -> pl == slot b r c) reg
-        winregs pl = any (\reg -> winreg pl reg) regs
+        wonhere pl reg = all (\(r, c) -> pl == slot b r c) reg
+        haswin pl = any (\reg -> wonhere pl reg) regs
 iswon b = isJust $ winner b
 
-count y xs = count' y xs 0
-count' _ [] n = n
-count' y (x:xs) !n 
-  | (x == y) = count' y xs (n+1) 
-  | otherwise = count' y xs n
+count y xs = foldl' (\n x -> if x == y then n + 1 else n) 0 xs
 
+-- won't overflow Int
 infty  = 2^28
 
 scoreboard b pl
-  | (w == Just pl1) = infty
-  | (w == Just pl2) = -infty
+  | (w == Just pl) = infty
+  | (w == Just (other pl)) = - infty
   | otherwise = sum [scorereg reg | reg <- regs]
   where
     Board _ _ _ regs = b
-    pl1 = pl
-    pl2 = nextplayer pl
     w = winner b
     scorereg reg 
       | s1 > 0  && s2 == 0 = s1*s1
@@ -90,22 +95,19 @@ scoreboard b pl
       | otherwise          = 0
       where
         vals = [slot b r c | (r, c) <- reg]
-        s1 = count pl1 vals
-        s2 = count pl2 vals
+        s1 = count pl vals
+        s2 = count (other pl) vals
 
 minimax :: Board -> Int -> Player -> (Int, [Int])
 minimax b depth pl 
   | depth == 0 || iswon b = (scoreboard b pl, [])
   | otherwise             = maximum [movec c | c <- available b]
   where
-    pl' = nextplayer pl
+    pl' = other pl
     movec c = (-n, c:cs)
       where
         b' = fromJust $ safeput b c pl
         (n, cs) = minimax b' (depth - 1) pl'
-
-aimove (b, pl) = return c
-  where (_, (c:_)) = minimax b 4 pl
 
 -- interaction
 
@@ -121,9 +123,9 @@ play f g s = let (b, turn) = s in
     c <- case turn of One -> f s; Two -> g s
     case safeput b c turn of
       Nothing -> play f g s
-      Just b' -> play f g (b', nextplayer turn)
+      Just b' -> play f g (b', other turn)
 
-consolegetcol (b, _) = do
+inputcol (b, _) = do
   putStrLn "Enter a column:" >> readcol
   where 
     readcol = do
@@ -132,4 +134,7 @@ consolegetcol (b, _) = do
         [(c :: Int, _)] | validcol b c -> return c
         _                              -> readcol
 
-main = play aimove consolegetcol ((blank 4 4), One)
+aimove (b, pl) = return c
+  where (_, (c:_)) = minimax b 4 pl
+
+main = play inputcol aimove ((blank 5 6), One)
