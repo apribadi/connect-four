@@ -50,10 +50,10 @@ regions rn cn = let
     diag2 r c = [(r - i, c + i)  | i <- [0..3]]
   in
     concat [
-        [horiz r c | r <- [0..rn-1], c <- [0..rn-4]]
-      , [verti r c | r <- [0..rn-4], c <- [0..rn-1]]
-      , [diag1 r c | r <- [0..rn-4], c <- [0..rn-4]]
-      , [diag2 r c | r <- [3..rn-1], c <- [0..rn-4]]
+        [horiz r c | r <- [0..rn-1], c <- [0..cn-4]]
+      , [verti r c | r <- [0..rn-4], c <- [0..cn-1]]
+      , [diag1 r c | r <- [0..rn-4], c <- [0..cn-4]]
+      , [diag2 r c | r <- [3..rn-1], c <- [0..cn-4]]
       ]
 
 -- minimax AI
@@ -75,46 +75,37 @@ count' y (x:xs) !n
 
 infty  = 2^28
 
-scoreboard b
-  | (w == Just One) = infty
-  | (w == Just Two) = -infty
+scoreboard b pl
+  | (w == Just pl1) = infty
+  | (w == Just pl2) = -infty
   | otherwise = sum [scorereg reg | reg <- regs]
   where
     Board _ _ _ regs = b
+    pl1 = pl
+    pl2 = nextplayer pl
     w = winner b
     scorereg reg 
       | s1 > 0  && s2 == 0 = s1*s1
-      | s1 == 0 && s2 > 0  = s2*s2
+      | s1 == 0 && s2 > 0  = -s2*s2
       | otherwise          = 0
       where
         vals = [slot b r c | (r, c) <- reg]
-        s1 = count One vals
-        s2 = count Two vals
+        s1 = count pl1 vals
+        s2 = count pl2 vals
 
+minimax :: Board -> Int -> Player -> (Int, [Int])
 minimax b depth pl 
-  | depth == 0 || iswon b = scoreboard b
-  | otherwise             = maximum [evalmove c | c <- available b]
+  | depth == 0 || iswon b = (scoreboard b pl, [])
+  | otherwise             = maximum [movec c | c <- available b]
   where
-    makemove c = fromJust $ safeput b c pl
-    evalmove c = - minimax (makemove c) (depth-1) (nextplayer pl)
+    pl' = nextplayer pl
+    movec c = (-n, c:cs)
+      where
+        b' = fromJust $ safeput b c pl
+        (n, cs) = minimax b' (depth - 1) pl'
 
 aimove (b, pl) = return c
-  where
-    makemove c = fromJust $ safeput b c pl
-    (_, c) = maximum [(- minimax (makemove c) 4 pl, c) | c <- available b]
-
-alphabeta b turn depth alp bet = 
-  if depth == 0 || iswon b then
-    scoreboard b
-  else let
-      f (c:cs) alp' = let
-          alp'' = - max alp' (- alphabeta b (nextplayer turn) (depth-1) (-bet) (-alp'))
-        in
-          if bet <= alp'' then alp'' else f cs alp''
-      f [] alp' = alp'
-    in
-      f (available b) alp
-
+  where (_, (c:_)) = minimax b 4 pl
 
 -- interaction
 
@@ -141,4 +132,4 @@ consolegetcol (b, _) = do
         [(c :: Int, _)] | validcol b c -> return c
         _                              -> readcol
 
-main = play consolegetcol consolegetcol ((blank 5 8), One)
+main = play aimove consolegetcol ((blank 4 4), One)
