@@ -30,12 +30,11 @@ blank rn cn = Board rn cn xs (regions rn cn)
   where xs = listArray (0, rn*cn-1) (replicate (rn*cn) Empty)
 
 instance Show Board where
-  show b = unlines (map srow (reverse [0..rn-1])) ++ line ++ "\n" ++ nums
+  show b = unlines (map srow (reverse [0..rn-1])) ++ nums
     where Board rn cn xs regs = b
           row r = map (\c -> slot b r c) [0..cn-1]
           srow r = "|" ++ (intercalate "|" $ map show $ row r) ++ "|"
           nums = " " ++ (intercalate " " $ map show [0..cn-1]) ++ " "
-          line = concat $ replicate (cn*2+1) "*"
       
 -- Raw slot read/write
 slot b r c = xs ! ((r * cn) + c)                           
@@ -126,6 +125,14 @@ minimax b depth pl
 type GameState = (Board, Player)
 type Controller = GameState -> IO Int
 
+getinput prompt validate = do
+    putStr prompt >> hFlush stdout >> f
+  where f = do
+          s <- getLine 
+          case reads s of
+            [(x, _)] | validate x -> return x
+            _                     -> f
+
 play :: Controller -> Controller -> GameState -> IO ()
 play f g s = let (b, pl) = s in 
   if finished b then do
@@ -140,16 +147,15 @@ play f g s = let (b, pl) = s in
       Nothing -> putStrLn "Invalid command\n" >> play f g s
       Just b' -> play f g (b', other pl)
 
-inputcol (b, _) = do
-  putStr "Enter a column: " >> hFlush stdout >> readcol
-  where 
-    readcol = do
-      s <- getLine
-      case reads s of
-        [(c :: Int, _)] | validcol b c -> return c
-        _                              -> readcol
+human (b, _) = getinput "Enter a column: " validate
+  where validate c = validcol b c
 
-aimove (b, pl) = return c
+ai (b, pl) = return c
   where (_, (c:_)) = minimax b 4 pl
 
-main = play inputcol aimove ((blank 5 6), One)
+main = do
+  plnum <- getinput "Go first as Xs, or second as Os [1/2]: " (\n -> n == 1 || n == 2)
+  case plnum of 
+    1 -> play human ai ((blank 5 7), One)
+    2 -> play ai human ((blank 5 7), One)
+
